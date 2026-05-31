@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini KB-Chatbot</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        #chat-container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; }
+        #status-bar { padding: 10px 20px; background: #e9ecef; font-size: 0.9em; color: #555; border-bottom: 1px solid #ddd; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        #messages { flex: 1; padding: 20px; overflow-y: auto; border-bottom: 1px solid #ddd; }
+        .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 80%; white-space: pre-wrap; }
+        .user { background: #007bff; color: white; margin-left: auto; }
+        .bot { background: #e9ecef; color: black; }
+        #input-area { display: flex; padding: 10px; }
+        #user-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; margin-left: 10px; cursor: pointer; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="status-bar" id="status-text">外部ファイルを読み込み中...</div>
+    <div id="messages"></div>
+    <div id="input-area">
+        <input type="text" id="user-input" placeholder="メッセージを入力..." disabled>
+        <button id="send-btn" onclick="sendMessage()" disabled>送信</button>
+    </div>
+</div>
+
+<script>
+    // 🔴 設定項目
+    const API_KEY = 'AIzaSyBrSjQauVT8AbJNYlU1hqBIFZOPpg5e67I'; // あなたのGemini APIキー
+    // 🔴 さきほど変換したGoogleドライブの直リンクURLをここに貼り付けます
+    const DRIVE_FILE_URL = 'https://docs.google.com/uc?export=download&id=1_I8zDwkv4vfbclgMsJ19XdtvPusPSg36'; 
+
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+    
+    let knowledgeText = ""; // ドライブから読み込んだテキストを格納する変数
+
+    // ページが読み込まれたら、自動的にGoogleドライブのファイルをロードする
+    window.addEventListener('DOMContentLoaded', async () => {
+        const statusBar = document.getElementById('status-bar');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+
+        try {
+            const response = await fetch(DRIVE_FILE_URL);
+            if (!response.ok) throw new Error('ファイルの取得に失敗しました');
+            
+            knowledgeText = await response.text();
+            
+            statusBar.innerText = "✅ 参照ファイルの読み込みが完了しました。チャット可能です。";
+            statusBar.style.background = "#d4edda";
+            statusBar.style.color = "#155724";
+            userInput.disabled = false;
+            sendBtn.disabled = false;
+        } catch (error) {
+            console.error('Error loading knowledge file:', error);
+            statusBar.innerText = "❌ 参照ファイルの読み込みに失敗しました。共有設定を確認してください。";
+            statusBar.style.background = "#f8d7da";
+            statusBar.style.color = "#721c24";
+        }
+    });
+
+    async function sendMessage() {
+        const inputElement = document.getElementById('user-input');
+        const text = inputElement.value.trim();
+        if (!text) return;
+
+        appendMessage(text, 'user');
+        inputElement.value = '';
+
+        // ドライブのテキストを「前提知識（コンテキスト）」としてプロンプトに組み込む
+        const promptStructure = {
+            contents: [
+                {
+                    parts: [
+                        {
+                            text: `あなたは提供された【参照資料】に基づいて正確に答えるアシスタントです。
+                            資料に載っていない内容については「資料に記載がありません」と答えてください。
+
+                            【参照資料】
+                            ${knowledgeText}
+
+                            【ユーザーからの質問】
+                            ${text}`
+                        }
+                    ]
+                }
+            ]
+        };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promptStructure)
+            });
+
+            const data = await response.json();
+            const botResponse = data.candidates[0].content.parts[0].text;
+            
+            appendMessage(botResponse, 'bot');
+        } catch (error) {
+            console.error('Error:', error);
+            appendMessage('エラーが発生しました。時間を置いてやり直してください。', 'bot');
+        }
+    }
+
+    function appendMessage(text, sender) {
+        const messagesContainer = document.getElementById('messages');
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message', sender);
+        messageElement.innerText = text;
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+</script>
+</body>
+</html>

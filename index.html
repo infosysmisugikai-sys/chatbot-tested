@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini KB-Chatbot</title>
+    <title>Gemini Local-KB Chatbot</title>
     <style>
         body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
         #chat-container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; }
@@ -21,7 +21,7 @@
 <body>
 
 <div id="chat-container">
-    <div id="status-bar" id="status-text">外部ファイルを読み込み中...</div>
+    <div id="status-bar">外部参照ファイルを読み込み中...</div>
     <div id="messages"></div>
     <div id="input-area">
         <input type="text" id="user-input" placeholder="メッセージを入力..." disabled>
@@ -31,34 +31,34 @@
 
 <script>
     // 🔴 設定項目
-    const API_KEY = 'AIzaSyBrSjQauVT8AbJNYlU1hqBIFZOPpg5e67I'; // あなたのGemini APIキー
-    // 🔴 さきほど変換したGoogleドライブの直リンクURLをここに貼り付けます
-    const DRIVE_FILE_URL = 'https://docs.google.com/uc?export=download&id=1_I8zDwkv4vfbclgMsJ19XdtvPusPSg36'; 
+    const API_KEY = 'AIzaSyBrSjQauVT8AbJNYlU1hqBIFZOPpg5e67I'; // あなたのGemini APIキーをここに貼り付け
+    const KNOWLEDGE_FILE = '法人内施設電話番号.txt';  // 同じフォルダに置くテキストファイル名
 
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
     
-    let knowledgeText = ""; // ドライブから読み込んだテキストを格納する変数
+    let knowledgeText = ""; // 読み込んだテキストを格納する変数
 
-    // ページが読み込まれたら、自動的にGoogleドライブのファイルをロードする
+    // ページ読み込み時に、同じフォルダのknowledge.txtを自動で読み込む
     window.addEventListener('DOMContentLoaded', async () => {
         const statusBar = document.getElementById('status-bar');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
 
         try {
-            const response = await fetch(DRIVE_FILE_URL);
-            if (!response.ok) throw new Error('ファイルの取得に失敗しました');
+            // 相対パスでファイルを読み込み（CORSエラーが起きない）
+            const response = await fetch(KNOWLEDGE_FILE);
+            if (!response.ok) throw new Error('参照ファイルの取得に失敗しました。ファイルが存在するか確認してください。');
             
             knowledgeText = await response.text();
             
-            statusBar.innerText = "✅ 参照ファイルの読み込みが完了しました。チャット可能です。";
+            statusBar.innerText = `✅ 参照資料（${KNOWLEDGE_FILE}）の読み込みが完了しました。`;
             statusBar.style.background = "#d4edda";
             statusBar.style.color = "#155724";
             userInput.disabled = false;
             sendBtn.disabled = false;
         } catch (error) {
             console.error('Error loading knowledge file:', error);
-            statusBar.innerText = "❌ 参照ファイルの読み込みに失敗しました。共有設定を確認してください。";
+            statusBar.innerText = `❌ ${KNOWLEDGE_FILE} の読み込みに失敗しました。ファイル名を確認してください。`;
             statusBar.style.background = "#f8d7da";
             statusBar.style.color = "#721c24";
         }
@@ -72,7 +72,7 @@
         appendMessage(text, 'user');
         inputElement.value = '';
 
-        // ドライブのテキストを「前提知識（コンテキスト）」としてプロンプトに組み込む
+        // 読み込んだテキストを「前提知識（コンテキスト）」としてプロンプトに組み込む
         const promptStructure = {
             contents: [
                 {

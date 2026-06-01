@@ -65,32 +65,62 @@
     });
 
     async function sendMessage() {
-        const inputElement = document.getElementById('user-input');
-        const text = inputElement.value.trim();
-        if (!text) return;
+    const inputElement = document.getElementById('user-input');
+    const text = inputElement.value.trim();
+    if (!text) return;
 
-        appendMessage(text, 'user');
-        inputElement.value = '';
+    appendMessage(text, 'user');
+    inputElement.value = '';
 
-        // 読み込んだテキストを「前提知識（コンテキスト）」としてプロンプトに組み込む
-        const promptStructure = {
-            contents: [
-                {
-                    parts: [
-                        {
-                            text: `あなたは提供された【参照資料】に基づいて正確に答えるアシスタントです。
-                            資料に載っていない内容については「資料に記載がありません」と答えてください。
+    // 🔥 Gemini APIの公式仕様に完全準拠したデータ構造に修正
+    const promptStructure = {
+        // システム指示（AIへの役割や参照資料の紐付け）は、contentsの外に出すのが最新APIの正攻法です
+        systemInstruction: {
+            parts: [{
+                text: `あなたは提供された【参照資料】に基づいて正確に答えるアシスタントです。
+                資料に載っていない内容については「資料に記載がありません」と答えてください。
 
-                            【参照資料】
-                            ${knowledgeText}
+                【参照資料】
+                ${knowledgeText}`
+            }]
+        },
+        contents: [{
+            role: "user",
+            parts: [{ text: text }]
+        }],
+        // 安全に動かすためのマイルドな生成パラメータ
+        generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 800
+        }
+    };
 
-                            【ユーザーからの質問】
-                            ${text}`
-                        }
-                    ]
-                }
-            ]
-        };
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(promptStructure)
+        });
+
+        const data = await response.json();
+
+        // 💡 エラー応答が返ってきていないかチェック
+        if (data.error) {
+            console.error('Gemini API Error:', data.error);
+            appendMessage(`APIエラー: ${data.error.message} (${data.error.status})`, 'bot');
+            return;
+        }
+
+        const botResponse = data.candidates[0].content.parts[0].text;
+        appendMessage(botResponse, 'bot');
+
+    } catch (error) {
+        console.error('Fetch Error:', error);
+        appendMessage('通信エラーが発生しました。ブラウザのConsole(F12)を確認してください。', 'bot');
+    }
+}
 
         try {
             const response = await fetch(API_URL, {

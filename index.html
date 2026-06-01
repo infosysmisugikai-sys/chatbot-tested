@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Local-KB Chatbot</title>
+    <title>Gemini KB-Chatbot (Debug Edition)</title>
     <style>
         body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
         #chat-container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; }
@@ -12,6 +12,7 @@
         .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; max-width: 80%; white-space: pre-wrap; }
         .user { background: #007bff; color: white; margin-left: auto; }
         .bot { background: #e9ecef; color: black; }
+        .error-msg { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; margin-right: auto; }
         #input-area { display: flex; padding: 10px; }
         #user-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
         button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; margin-left: 10px; cursor: pointer; }
@@ -30,97 +31,70 @@
 </div>
 
 <script>
-    // 🔴 設定項目
+    // ==========================================
+    // 🔴 設定項目（ここを変更してください）
+    // ==========================================
     const API_KEY = 'AIzaSyBrSjQauVT8AbJNYlU1hqBIFZOPpg5e67I'; // あなたのGemini APIキーをここに貼り付け
     const KNOWLEDGE_FILE = 'TELNO.txt';  // 同じフォルダに置くテキストファイル名
+    // ==========================================
 
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
-    
-    let knowledgeText = ""; // 読み込んだテキストを格納する変数
+    let knowledgeText = ""; 
 
-    // ページ読み込み時に、同じフォルダのknowledge.txtを自動で読み込む
+    // ページ読み込み時に、同じフォルダのファイルをロード
     window.addEventListener('DOMContentLoaded', async () => {
         const statusBar = document.getElementById('status-bar');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
 
         try {
-            // 相対パスでファイルを読み込み（CORSエラーが起きない）
             const response = await fetch(KNOWLEDGE_FILE);
-            if (!response.ok) throw new Error('参照ファイルの取得に失敗しました。ファイルが存在するか確認してください。');
+            if (!response.ok) throw new Error(`ステータスコード: ${response.status}`);
             
             knowledgeText = await response.text();
             
-            statusBar.innerText = `✅ 参照資料（${KNOWLEDGE_FILE}）の読み込みが完了しました。`;
+            statusBar.innerText = `✅ 参照資料（${KNOWLEDGE_FILE}）の読み込み完了。`;
             statusBar.style.background = "#d4edda";
             statusBar.style.color = "#155724";
             userInput.disabled = false;
             sendBtn.disabled = false;
         } catch (error) {
             console.error('Error loading knowledge file:', error);
-            statusBar.innerText = `❌ ${KNOWLEDGE_FILE} の読み込みに失敗しました。ファイル名を確認してください。`;
+            statusBar.innerText = `❌ ファイル読み込み失敗: ${error.message}`;
             statusBar.style.background = "#f8d7da";
             statusBar.style.color = "#721c24";
         }
     });
 
+    // メッセージ送信関数
     async function sendMessage() {
-    const inputElement = document.getElementById('user-input');
-    const text = inputElement.value.trim();
-    if (!text) return;
+        const inputElement = document.getElementById('user-input');
+        const text = inputElement.value.trim();
+        if (!text) return;
 
-    appendMessage(text, 'user');
-    inputElement.value = '';
+        appendMessage(text, 'user');
+        inputElement.value = '';
 
-    // 🔥 Gemini APIの公式仕様に完全準拠したデータ構造に修正
-    const promptStructure = {
-        // システム指示（AIへの役割や参照資料の紐付け）は、contentsの外に出すのが最新APIの正攻法です
-        systemInstruction: {
-            parts: [{
-                text: `あなたは提供された【参照資料】に基づいて正確に答えるアシスタントです。
-                資料に載っていない内容については「資料に記載がありません」と答えてください。
+        // 最新のGemini API（1.5-flash）公式データ構造
+        const promptStructure = {
+            systemInstruction: {
+                parts: [{
+                    text: `あなたは提供された【参照資料】に基づいて正確に答えるアシスタントです。
+                    資料に載っていない内容については「資料に記載がありません」と答えてください。
 
-                【参照資料】
-                ${knowledgeText}`
-            }]
-        },
-        contents: [{
-            role: "user",
-            parts: [{ text: text }]
-        }],
-        // 安全に動かすためのマイルドな生成パラメータ
-        generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 800
-        }
-    };
-
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json'
+                    【参照資料】
+                    ${knowledgeText}`
+                }]
             },
-            body: JSON.stringify(promptStructure)
-        });
-
-        const data = await response.json();
-
-        // 💡 エラー応答が返ってきていないかチェック
-        if (data.error) {
-            console.error('Gemini API Error:', data.error);
-            appendMessage(`APIエラー: ${data.error.message} (${data.error.status})`, 'bot');
-            return;
-        }
-
-        const botResponse = data.candidates[0].content.parts[0].text;
-        appendMessage(botResponse, 'bot');
-
-    } catch (error) {
-        console.error('Fetch Error:', error);
-        appendMessage('通信エラーが発生しました。ブラウザのConsole(F12)を確認してください。', 'bot');
-    }
-}
+            contents: [{
+                role: "user",
+                parts: [{ text: text }]
+            }],
+            generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 1000
+            }
+        };
 
         try {
             const response = await fetch(API_URL, {
@@ -130,19 +104,29 @@
             });
 
             const data = await response.json();
+
+            // Google側からエラー返答があった場合
+            if (data.error) {
+                console.error('Gemini API Error:', data.error);
+                appendMessage(`【APIエラー】\nコード: ${data.error.code}\n理由: ${data.error.status}\n詳細: ${data.error.message}`, 'error-msg');
+                return;
+            }
+
+            // 正常回答の表示
             const botResponse = data.candidates[0].content.parts[0].text;
-            
             appendMessage(botResponse, 'bot');
+
         } catch (error) {
-            console.error('Error:', error);
-            appendMessage('エラーが発生しました。時間を置いてやり直してください。', 'bot');
+            // 通信自体が遮断された場合（ここを通っている可能性大）
+            console.error('Fetch System Error:', error);
+            appendMessage(`【システム通信エラー】\n原因: ${error.message}\n\n※ブラウザやセキュリティによってGoogleへの通信がブロックされているか、APIキーの文字列に不要な改行やスペースが入っている可能性があります。`, 'error-msg');
         }
     }
 
-    function appendMessage(text, sender) {
+    function appendMessage(text, className) {
         const messagesContainer = document.getElementById('messages');
         const messageElement = document.createElement('div');
-        messageElement.classList.add('message', sender);
+        messageElement.classList.add('message', className);
         messageElement.innerText = text;
         messagesContainer.appendChild(messageElement);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
